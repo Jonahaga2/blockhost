@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# build output (installer + unpacked app)
+dist/
+
+# bundled Java runtime (downloaded during setup, ~58 MB — not committed)
+resources/jre/
+
+# logs & OS cruft
+*.log
+.DS_Store
+Thumbs.db
+
+# local helper scripts
+build-elevated.ps1

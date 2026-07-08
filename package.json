@@ -1,0 +1,39 @@
+{
+  "name": "blockhost",
+  "version": "0.1.0",
+  "description": "Host and manage Minecraft servers from a simple desktop app.",
+  "main": "src/main/main.js",
+  "author": "Jonah",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "nat-upnp": "^1.1.1"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.blockhost.app",
+    "productName": "BlockHost",
+    "directories": { "output": "dist" },
+    "files": ["**/*", "!resources/**", "!dist/**"],
+    "extraResources": [
+      { "from": "resources/jre", "to": "jre" }
+    ],
+    "win": {
+      "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "BlockHost"
+    }
+  }
+}
