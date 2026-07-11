@@ -19,7 +19,7 @@
   },
   "build": {
     "appId": "com.blockhost.app",
-    "productName": "BlockHost",
+    "productName": "Host",
     "directories": { "output": "dist" },
     "files": ["**/*", "!resources/**", "!dist/**"],
     "extraResources": [
@@ -34,7 +34,7 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
-      "shortcutName": "BlockHost"
+      "shortcutName": "Host"
     }
   }
 }

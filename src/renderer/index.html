@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BlockHost</title>
+  <title>Host</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -11,7 +11,7 @@
     <div class="titlebar">
       <div class="plate">
         <span class="mark" aria-hidden="true"><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i></span>
-        <span class="brand">BlockHost</span>
+        <span class="brand">Host</span>
       </div>
       <span class="spacer"></span>
       <button class="themebtn" id="themebtn" type="button">Theme</button>
@@ -29,7 +29,7 @@
         <div class="center-empty">
           <div>
             <div class="big">No servers yet</div>
-            <p>Create your first Minecraft server — BlockHost downloads it, runs it, and helps a friend join.</p>
+            <p>Make your first server. Host sets it up, runs it, and helps your friend join.</p>
             <button class="btn solid" id="newBtn2" type="button"><span class="icon">＋</span> New server</button>
           </div>
         </div>
@@ -43,6 +43,7 @@
             <span class="status-tag"><span class="glyph stopped" id="hGlyph"></span><span id="hStatus">Stopped</span></span>
           </div>
           <div class="meta" id="hMeta"></div>
+          <div class="statsbar" id="hStats"></div>
           <div class="controls">
             <button class="btn solid" id="startBtn" type="button"><span class="icon">▶</span> Start</button>
             <button class="btn" id="stopBtn" type="button"><span class="icon">■</span> Stop</button>
@@ -51,15 +52,17 @@
         </div>
 
         <div class="banner hide" id="javaBanner">
-          <span class="k">☕</span>
-          <div><b>Java isn't installed.</b> Minecraft servers need Java to run — the latest versions need <b>Java 25</b>. <a href="https://adoptium.net/temurin/releases/?version=25" target="_blank" rel="noopener">Download Temurin 25</a>, install it (tick “Add to PATH” if asked), then reopen BlockHost.</div>
+          <div><b>Java isn't installed.</b> Your server needs Java to run. <a href="https://adoptium.net/temurin/releases/?version=25" target="_blank" rel="noopener">Get Java 25</a>, install it, then reopen Host.</div>
         </div>
 
         <div class="tabs" role="tablist">
           <button class="tab active" data-tab="console" role="tab">Console</button>
+          <button class="tab" data-tab="players" role="tab">Players</button>
+          <button class="tab" data-tab="map" role="tab">Map</button>
           <button class="tab" data-tab="settings" role="tab">Settings</button>
           <button class="tab" data-tab="files" role="tab">Files</button>
-          <button class="tab" data-tab="share" role="tab">Invite a friend</button>
+          <button class="tab" data-tab="addons" role="tab">Add-ons</button>
+          <button class="tab" data-tab="share" role="tab">Network</button>
           <button class="tab" data-tab="backups" role="tab">Backups</button>
           <span class="tab-underline" id="tabUnderline"></span>
         </div>
@@ -71,23 +74,58 @@
             <div class="cmd">
               <div class="input-wrap">
                 <div class="cmdghost" id="ghost"><span class="typed"></span><span class="rest"></span></div>
-                <input id="cmdInput" autocomplete="off" spellcheck="false" placeholder="Type a command — with or without / (try /gamemode, weather, say)…" />
+                <input id="cmdInput" autocomplete="off" spellcheck="false" placeholder="Type a command (try gamemode, weather, say)…" />
                 <div class="ac" id="ac"></div>
               </div>
               <button class="btn solid" id="sendBtn" type="button">Send</button>
             </div>
           </div>
 
+          <!-- players -->
+          <div class="panel" data-panel="players">
+            <div id="playersWrap"></div>
+          </div>
+
+          <!-- map -->
+          <div class="panel" data-panel="map">
+            <div class="map-bar">
+              <div class="seg" id="mapDim">
+                <button class="on" data-dim="overworld" type="button">Overworld</button>
+                <button data-dim="nether" type="button">Nether</button>
+                <button data-dim="end" type="button">End</button>
+              </div>
+              <label class="map-y"><span class="map-y-lab" id="mapYLabel">Y: Surface</span><input type="range" id="mapY" min="-64" max="320" value="320" /></label>
+              <div class="map-zoom"><button class="btn sm ghost" id="mapZoomOut" type="button">−</button><button class="btn sm ghost" id="mapZoomIn" type="button">+</button></div>
+              <span class="map-stat" id="mapStat"></span>
+              <button class="btn sm ghost" id="mapRefresh" type="button">Refresh</button>
+            </div>
+            <div class="map-wrap">
+              <canvas id="mapCanvas"></canvas>
+              <div class="map-empty" id="mapEmpty"></div>
+            </div>
+            <div class="map-legend">
+              <span>Top-down block colours — lighter ground is higher</span>
+              <span>Drag the Y slider to slice underground</span>
+              <span>Scroll to zoom · drag to pan</span>
+            </div>
+          </div>
+
           <!-- settings -->
           <div class="panel" data-panel="settings">
-            <div class="set-toolbar"><input class="set-search txt" id="setSearch" placeholder="🔍  Search settings…" /></div>
+            <div class="autobk">
+              <div class="autobk-head">
+                <div><div class="lab">Restart automatically</div><div class="hlp">If the server crashes or stops unexpectedly, start it back up.</div></div>
+                <div class="toggle on" id="crToggle"><span class="sw"><span class="kn"></span></span><span class="state">On</span></div>
+              </div>
+            </div>
+            <div class="set-toolbar"><input class="set-search txt" id="setSearch" placeholder="Search settings…" /></div>
             <div id="setBody"></div>
-            <div class="savebar"><button class="btn solid" id="saveBtn" type="button">Save settings</button><span class="hint" id="saveHint">Some changes apply after the next restart.</span></div>
+            <div class="savebar"><button class="btn solid" id="saveBtn" type="button">Save settings</button><span class="hint" id="saveHint">Some changes need a restart to take effect.</span></div>
           </div>
 
           <!-- files -->
           <div class="panel" data-panel="files">
-            <div class="note" style="margin:0 0 16px"><span class="k">✍️</span><div>Edit config files directly. A typo here can stop the server starting — the <b>Settings</b> tab is the safe way to change common options.</div></div>
+            <div class="note" style="margin:0 0 16px"><div>Edit the raw files. One typo can stop your server — the <b>Settings</b> tab is the safe way to change things.</div></div>
             <div class="files">
               <div class="file-list" id="fileList"></div>
               <div class="editor">
@@ -100,44 +138,71 @@
             </div>
           </div>
 
+          <!-- add-ons (Modrinth plugins/mods) -->
+          <div class="panel" data-panel="addons">
+            <div class="empty" id="addonsUnsupported" style="display:none"></div>
+            <div id="addonsBody" style="display:none">
+              <div class="note" style="margin:0 0 16px"><div>Install from Modrinth, then <b>restart</b> the server to load new add-ons.</div></div>
+              <div class="ao-bar">
+                <input class="txt" id="aoSearch" placeholder="Search…" />
+                <span class="ao-kind" id="aoKind"></span>
+              </div>
+              <div class="ao-results" id="aoResults"></div>
+              <div class="divider"></div>
+              <p class="lead">Installed</p>
+              <div class="ao-installed" id="aoInstalled"></div>
+            </div>
+          </div>
+
           <!-- share -->
           <div class="panel" data-panel="share">
             <!-- playit.gg tunnel (easiest) -->
-            <p class="lead">Easiest — free tunnel, no router setup</p>
+            <p class="lead">Easiest way — no setup</p>
             <div id="tunnelIdle">
-              <p class="tdesc">Runs a free <b>playit.gg</b> tunnel so a far-away friend can join without changing anything on your router. You sign in to playit.gg once in your browser.</p>
-              <button class="btn solid" id="tunnelSetupBtn" type="button"><span class="icon">🌐</span> Set up free tunnel</button>
+              <p class="tdesc">Let a faraway friend join without touching your router. You sign in to <b>playit.gg</b> once, and Host does the rest.</p>
+              <button class="btn solid" id="tunnelSetupBtn" type="button">Set up free tunnel</button>
             </div>
             <div id="tunnelSetup" style="display:none">
-              <div class="statline"><span class="glyph starting"></span><span id="tunnelState">Contacting playit.gg…</span></div>
+              <div class="statline"><span class="glyph starting"></span><span id="tunnelState">Connecting…</span></div>
               <div id="tunnelClaim" style="display:none">
-                <p class="tdesc"><b>1.</b> We opened <b>playit.gg</b> in your browser — sign in (free) and click <b>Allow</b>. &nbsp;<b>2.</b> When asked, add a <b>Minecraft: Java</b> tunnel pointing to <code>127.0.0.1:25565</code>.</p>
+                <p class="tdesc"><b>1.</b> Sign in to <b>playit.gg</b> in your browser and click <b>Allow</b>. &nbsp;<b>2.</b> Add a <b>Minecraft: Java</b> tunnel to <code>127.0.0.1:25565</code>.</p>
                 <button class="btn" id="tunnelOpenBtn" type="button">Open playit.gg again</button>
               </div>
             </div>
             <div id="tunnelActive" style="display:none">
-              <p class="lead" style="margin-top:4px">Your friend's tunnel address</p>
+              <p class="lead" style="margin-top:4px">Give this to your friend</p>
               <div id="tunnelAddrs"></div>
-              <div class="statline"><button class="btn sm ghost" id="tunnelRefresh" type="button">Refresh</button><button class="btn sm ghost" id="tunnelStopBtn" type="button">Turn off tunnel</button></div>
+              <div class="statline"><button class="btn sm ghost" id="tunnelRefresh" type="button">Refresh</button><button class="btn sm ghost" id="tunnelStopBtn" type="button">Turn off</button></div>
             </div>
             <div class="divider"></div>
 
-            <p class="lead">Or share your direct address (needs port forwarding)</p>
+            <p class="lead">Or use your own address</p>
             <div class="addr"><div class="box" id="addrBox">—</div><button class="btn" id="copyBtn" type="button">Copy</button></div>
-            <div class="statline"><span class="glyph stopped" id="reachGlyph"></span><span id="reachText">Not checked yet.</span><button class="btn sm ghost" id="checkBtn" type="button">Check reachability</button></div>
-            <button class="btn solid" id="upnpBtn" type="button"><span class="icon">⚡</span> Try automatic setup (UPnP)</button>
+            <div class="statline"><span class="glyph stopped" id="reachGlyph"></span><span id="reachText">Not checked yet.</span><button class="btn sm ghost" id="checkBtn" type="button">Check connection</button></div>
+            <button class="btn solid" id="upnpBtn" type="button">Open the port automatically</button>
             <div class="divider"></div>
-            <p class="lead">If automatic setup doesn't work — do it by hand</p>
+            <p class="lead">If that didn't work, do it by hand</p>
             <ol class="steps" id="steps">
-              <li>Open your router at <code id="gwLink">http://192.168.1.1</code> in a browser.</li>
-              <li>Find <b>Port Forwarding</b> and forward TCP port <code id="portCode">25565</code> to this PC at <code id="localCode">—</code>.</li>
-              <li>Come back and press <b>Check reachability</b> — you want it to say <b>reachable</b>.</li>
+              <li>Open your router at <code id="gwLink">http://192.168.1.1</code> in your browser.</li>
+              <li>Find <b>Port Forwarding</b> and open port <code id="portCode">25565</code> to this PC (<code id="localCode">—</code>).</li>
+              <li>Come back and press <b>Check connection</b> — it should say <b>reachable</b>.</li>
             </ol>
-            <div class="note"><span class="k">🛡️</span><div><b>Stay safe.</b> Only this one port is opened. For a private game, turn on <b>white-list</b> in Settings so strangers can't join.</div></div>
+            <div class="note"><div><b>Stay safe.</b> Only this one port is opened. For a private game, turn on <b>Whitelist</b> in Settings.</div></div>
           </div>
 
           <!-- backups -->
           <div class="panel" data-panel="backups">
+            <div class="autobk">
+              <div class="autobk-head">
+                <div><div class="lab">Automatic backups</div><div class="hlp">Save the world on a schedule while the server is running.</div></div>
+                <div class="toggle" id="abToggle"><span class="sw"><span class="kn"></span></span><span class="state">Off</span></div>
+              </div>
+              <div class="autobk-opts" id="abOpts">
+                <div class="ab-row"><span class="ab-lab">Back up every</span><div class="selwrap"><select id="abMins"><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="120">2 hours</option><option value="360">6 hours</option></select></div></div>
+                <div class="ab-row"><span class="ab-lab">Keep the newest</span><div class="selwrap"><select id="abKeep"><option value="3">3 backups</option><option value="5">5 backups</option><option value="10">10 backups</option><option value="20">20 backups</option></select></div></div>
+                <div class="ab-row"><span class="ab-lab">Only back up when players are online</span><div class="toggle" id="abPlayers"><span class="sw"><span class="kn"></span></span><span class="state">Off</span></div></div>
+              </div>
+            </div>
             <div class="bk-top"><p class="lead" style="margin:0">Saved on this PC — nothing leaves your computer</p><button class="btn solid" id="backupBtn" type="button"><span class="icon">＋</span> Back up now</button></div>
             <div class="bk-list" id="bkList"></div>
           </div>
@@ -156,19 +221,19 @@
         <div><label class="mini-lab">Memory</label><div class="slider"><input type="range" min="1" max="16" value="2" id="mRam" /><span class="val"><span id="mRamVal">2</span> GB</span></div></div>
 
         <div id="newFields">
-          <div style="margin-bottom:16px"><label class="mini-lab">Server type</label><div class="seg" id="mType"><button class="on" data-type="Paper" type="button">Paper · recommended</button><button data-type="Vanilla" type="button">Vanilla</button></div></div>
+          <div style="margin-bottom:16px"><label class="mini-lab">Server type</label><div class="seg" id="mType"><button class="on" data-type="Paper" type="button">Paper · recommended</button><button data-type="Fabric" type="button">Fabric · mods</button><button data-type="Vanilla" type="button">Vanilla</button></div></div>
           <div style="display:flex; gap:12px; margin-bottom:16px;">
             <div style="flex:1"><label class="mini-lab">Version</label><div class="selwrap"><select id="mVersion"><option>loading…</option></select></div></div>
-            <div style="flex:1"><label class="mini-lab">Port</label><input class="num" id="mPort" value="25565" /></div>
+            <div style="flex:1"><label class="mini-lab">Port</label><input class="num" id="mPort" value="25565" /><div class="hint" id="portWarn" style="display:none; margin-top:6px"></div></div>
           </div>
-          <label class="eula"><span class="chk" id="eulaChk"></span><span>I have read and accept the <a href="https://www.minecraft.net/eula" target="_blank" rel="noopener">Minecraft EULA</a> (required to run a server).</span></label>
+          <label class="eula"><span class="chk" id="eulaChk"></span><span>I accept the <a href="https://www.minecraft.net/eula" target="_blank" rel="noopener">Minecraft rules (EULA)</a> — needed to run a server.</span></label>
           <div id="dlWrap" style="display:none; margin-top:14px"><label class="mini-lab" id="dlLabel">Downloading…</label><div class="progress"><i id="dlBar"></i></div></div>
         </div>
 
         <div id="importFields" style="display:none">
-          <label class="mini-lab">Existing server folder</label>
-          <button class="btn block" id="pickFolderBtn" type="button">📁 Choose folder…</button>
-          <div class="hint" id="pickedPath" style="margin-top:8px">No folder chosen — pick the folder that holds your server's <code style="font-family:var(--mono)">.jar</code>.</div>
+          <label class="mini-lab">Your server folder</label>
+          <button class="btn block" id="pickFolderBtn" type="button">Choose folder…</button>
+          <div class="hint" id="pickedPath" style="margin-top:8px">No folder picked yet. Choose the folder with your server's <code style="font-family:var(--mono)">.jar</code> file.</div>
         </div>
       </div>
       <div class="modal-f"><button class="btn ghost" id="cancelBtn" type="button">Cancel</button><button class="btn solid" id="createBtn" type="button">Create server →</button></div>

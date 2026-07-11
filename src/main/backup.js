@@ -63,4 +63,10 @@ function remove(id, name) {
   fs.rmSync(file, { force: true });
 }
 
-module.exports = { create, list, restore, remove };
+// Keep only the newest `keep` backups whose name contains `_label`; delete the rest.
+function prune(id, label, keep) {
+  const matching = list(id).filter((b) => b.name.includes("_" + label));
+  for (const old of matching.slice(keep)) remove(id, old.name);
+}
+
+module.exports = { create, list, restore, remove, prune };

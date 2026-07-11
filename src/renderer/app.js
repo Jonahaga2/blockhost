@@ -1,5 +1,12 @@
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+// deterministic name -> colour swatch, so the same name always gets the same colour
+function swatch(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return "sw-" + (Math.abs(h) % 6);
+}
+function initial(name) { return esc((name || "?").trim().charAt(0).toUpperCase() || "?"); }
 
 // ---------- state ----------
 let servers = [];
@@ -44,7 +51,7 @@ function renderSidebar() {
   servers.forEach((s) => {
     const b = document.createElement("button");
     b.className = "srv" + (s.id === activeId ? " active" : "");
-    b.innerHTML = `<span class="glyph ${statusOf(s.id)}"></span><span class="col"><span class="nm">${esc(s.name)}</span><span class="mt">${esc(s.type)} ${esc(s.ver)} · ${s.ram} GB · :${s.port}</span></span>`;
+    b.innerHTML = `<span class="avatar-wrap"><span class="avatar ${swatch(s.name)}">${initial(s.name)}</span><span class="avatar-dot ${statusOf(s.id)}"></span></span><span class="col"><span class="nm">${esc(s.name)}</span><span class="mt"><span class="tag">${esc(s.type)} ${esc(s.ver)}</span><span class="tag">:${s.port}</span></span></span>`;
     b.onclick = () => selectServer(s.id);
     list.appendChild(b);
   });
@@ -83,9 +90,15 @@ function subscribeEvents() {
   api.onStatus(({ id, status }) => {
     statuses.set(id, status);
     renderSidebar();
-    if (id === activeId) renderHeader();
+    if (id === activeId) { renderHeader(); if (currentTab === "players") renderPlayers(); }
   });
-  api.onPlayers(({ id, players: p }) => players.set(id, p));
+  api.onPlayers(({ id, players: p }) => { players.set(id, p); if (id === activeId && currentTab === "players") renderPlayers(); });
+  api.onBackupMade(({ id }) => { toast("Auto-backup saved"); if (id === activeId && currentTab === "backups") loadBackups(); });
+  api.onCrashed(({ id, restarting, count, limit }) => {
+    const s = servers.find((x) => x.id === id);
+    const name = s ? s.name : "The server";
+    toast(restarting ? `${name} crashed — restarting (${count}/${limit})` : `${name} keeps crashing — auto-restart paused`);
+  });
 }
 
 // ---------- console ----------
@@ -94,7 +107,7 @@ function renderConsole() {
   const buf = logs.get(s.id) || [];
   const html = buf.length
     ? buf.map((l) => `<div class="ln">${esc(l)}</div>`).join("")
-    : `<div class="ln" style="color:var(--muted)">Server is stopped. Press Start to launch it — the first start downloads nothing, it just boots the server.</div>`;
+    : `<div class="ln" style="color:var(--muted)">Server is off. Press Start to turn it on.</div>`;
   const el = $("#console"); el.innerHTML = html; el.scrollTop = el.scrollHeight;
 }
 
@@ -137,17 +150,236 @@ function wireStatic() {
   wireConsole();
   wireSettings();
   wireFiles();
+  wireAddons();
   wireShare();
   wireBackups();
+  wireMap();
+  wireReliability();
   wireModal();
 }
 
 function loadTab(tab) {
-  if (tab === "settings") loadSettings();
+  if (tab === "players") { renderPlayers(); syncPlayers(); }
+  else if (tab === "map") loadMap();
+  else if (tab === "settings") { loadReliability(); loadSettings(); }
   else if (tab === "files") loadFiles();
+  else if (tab === "addons") loadAddons();
   else if (tab === "share") loadShare();
   else if (tab === "backups") loadBackups();
   else renderConsole();
+}
+
+function loadReliability() {
+  const s = activeServer(); if (!s) return;
+  abToggle($("#crToggle"), s.autoRestart !== false); // on by default
+}
+function wireReliability() {
+  $("#crToggle").onclick = () => {
+    const s = activeServer(); if (!s) return;
+    const on = !$("#crToggle").classList.contains("on");
+    abToggle($("#crToggle"), on);
+    s.autoRestart = on;
+    api.setAutoRestart(s.id, on);
+    toast(on ? "Auto-restart on" : "Auto-restart off");
+  };
+}
+
+/* ================= PLAYERS ================= */
+const GMODES = ["survival", "creative", "adventure", "spectator"];
+function playerCmd(cmd) { api.sendCommand(activeId, cmd).catch((e) => toast(e.message)); }
+// Ask the running server who's online — the reply is parsed back into the players list.
+function syncPlayers() { const s = activeServer(); if (s && statusOf(s.id) === "running") api.sendCommand(s.id, "list").catch(() => {}); }
+function renderPlayers() {
+  const s = activeServer(); if (!s) return;
+  const wrap = $("#playersWrap");
+  const st = statusOf(s.id);
+  const list = players.get(s.id) || [];
+  if (st !== "running") {
+    wrap.innerHTML = `<div class="empty">Start the server to manage players. Anyone who joins shows up here — then you can change their game mode, make them an operator, or remove them.</div>`;
+    return;
+  }
+  if (!list.length) {
+    wrap.innerHTML = `<div class="empty">No one is online right now. Players appear here the moment they join.</div>`;
+    return;
+  }
+  wrap.innerHTML = `<div class="pl-count">${list.length} ${list.length === 1 ? "player" : "players"} online</div>` + list.map((name) => {
+    const n = esc(name);
+    return `<div class="pl-card" data-p="${n}">
+      <div class="pl-top">
+        <span class="pl-face ${swatch(name)}">${initial(name)}</span>
+        <span class="pl-name">${n}</span>
+        <button class="btn sm ghost pl-kick" type="button">Kick</button>
+        <button class="btn sm ghost pl-ban" type="button">Ban</button>
+      </div>
+      <div class="pl-row">
+        <span class="pl-lab">Game mode</span>
+        <div class="seg pl-gm">${GMODES.map((g) => `<button data-gm="${g}" type="button">${g[0].toUpperCase() + g.slice(1)}</button>`).join("")}</div>
+      </div>
+      <div class="pl-row">
+        <span class="pl-lab">Operator</span>
+        <button class="btn sm pl-op" type="button">Make operator</button>
+        <button class="btn sm ghost pl-deop" type="button">Remove op</button>
+        <span class="pl-sep"></span>
+        <button class="btn sm ghost pl-wl" type="button">Add to whitelist</button>
+      </div>
+    </div>`;
+  }).join("");
+  wrap.querySelectorAll(".pl-card").forEach((card) => {
+    const name = card.dataset.p;
+    card.querySelector(".pl-kick").onclick = () => { if (confirm(`Kick ${name} from the server?`)) { playerCmd(`kick ${name}`); toast(`${name} kicked`); } };
+    card.querySelector(".pl-ban").onclick = () => { if (confirm(`Ban ${name}? They won't be able to rejoin until you unban them.`)) { playerCmd(`ban ${name}`); toast(`${name} banned`); } };
+    card.querySelector(".pl-op").onclick = () => { playerCmd(`op ${name}`); toast(`${name} is now an operator`); };
+    card.querySelector(".pl-deop").onclick = () => { playerCmd(`deop ${name}`); toast(`Removed operator from ${name}`); };
+    card.querySelector(".pl-wl").onclick = () => { playerCmd(`whitelist add ${name}`); toast(`${name} added to whitelist`); };
+    card.querySelectorAll(".pl-gm button").forEach((b) => b.onclick = () => {
+      card.querySelectorAll(".pl-gm button").forEach((x) => x.classList.remove("on"));
+      b.classList.add("on");
+      playerCmd(`gamemode ${b.dataset.gm} ${name}`);
+      toast(`${name} set to ${b.dataset.gm}`);
+    });
+  });
+}
+
+/* ================= WORLD MAP ================= */
+let mapDim = "overworld";
+let mapData = null;         // { off, blocksW, blocksH, originBX, originBZ, count }
+let mapZoom = 2, mapPanX = 0, mapPanY = 0, mapDrag = null;
+let mapY = null;            // null = surface, otherwise a Y level to slice at
+const Y_RANGE = { overworld: [-64, 320], nether: [0, 128], end: [0, 192] };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+function updateYLabel() {
+  const sl = $("#mapY");
+  const max = +sl.max;
+  $("#mapYLabel").textContent = +sl.value >= max ? "Y: Surface" : "Y: " + sl.value;
+}
+function applyYRange() {
+  const [lo, hi] = Y_RANGE[mapDim] || [-64, 320];
+  const sl = $("#mapY");
+  sl.min = lo; sl.max = hi; sl.value = hi;   // reset to Surface for the new dimension
+  mapY = null;
+  updateYLabel();
+}
+
+function wireMap() {
+  document.querySelectorAll("#mapDim button").forEach((b) => b.onclick = () => {
+    document.querySelectorAll("#mapDim button").forEach((x) => x.classList.remove("on"));
+    b.classList.add("on"); mapDim = b.dataset.dim; applyYRange(); loadMap();
+  });
+
+  const ys = $("#mapY");
+  ys.addEventListener("input", updateYLabel);
+  ys.addEventListener("change", () => { mapY = +ys.value >= +ys.max ? null : +ys.value; loadMap(true, true); });
+  $("#mapRefresh").onclick = () => loadMap(true);
+  $("#mapZoomIn").onclick = () => zoomBy(1.5);
+  $("#mapZoomOut").onclick = () => zoomBy(1 / 1.5);
+  // auto-refresh the map every 2 minutes while it's on screen and the server is running
+  setInterval(() => {
+    if (currentTab !== "map" || !mapData) return;
+    const s = activeServer();
+    if (s && statusOf(s.id) === "running") loadMap(true);
+  }, 120000);
+
+  const canvas = $("#mapCanvas");
+  canvas.addEventListener("wheel", (e) => {
+    if (!mapData) return;
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.2 : 1 / 1.2);
+  }, { passive: false });
+  canvas.addEventListener("mousedown", (e) => { if (!mapData) return; mapDrag = { x: e.clientX, y: e.clientY, px: mapPanX, py: mapPanY }; canvas.style.cursor = "grabbing"; });
+  window.addEventListener("mousemove", (e) => { if (!mapDrag) return; mapPanX = mapDrag.px + (e.clientX - mapDrag.x); mapPanY = mapDrag.py + (e.clientY - mapDrag.y); drawMapView(); });
+  window.addEventListener("mouseup", () => { if (mapDrag) { mapDrag = null; const c = $("#mapCanvas"); if (c) c.style.cursor = "grab"; } });
+  window.addEventListener("resize", () => { if (currentTab === "map" && mapData) drawMapView(); });
+}
+
+async function loadMap(keepView = false, useCache = false) {
+  const s = activeServer(); if (!s) return;
+  if (!keepView) $("#mapStat").textContent = "Reading world…";
+  // flush freshly-explored chunks to disk — only when reading fresh from disk, not on a Y change
+  if (!useCache && statusOf(s.id) === "running") {
+    try { await api.sendCommand(s.id, "save-all"); await new Promise((r) => setTimeout(r, 1300)); } catch {}
+  }
+  let data;
+  try { data = await api.worldMap(s.id, mapDim, mapY, useCache); }
+  catch (e) { $("#mapStat").textContent = ""; toast(e.message); return; }
+  if (currentTab === "map") buildMap(data, keepView);
+}
+
+// Paint every chunk's 16x16 colours into one offscreen canvas at 1px per block.
+function buildMap(data, keepView = false) {
+  const canvas = $("#mapCanvas"), empty = $("#mapEmpty");
+  const { count, bounds, coords, pixels } = data;
+  if (!count || !bounds) {
+    mapData = null; canvas.style.display = "none"; empty.style.display = "flex";
+    empty.textContent = statusOf(activeId) === "running"
+      ? "No chunks generated here yet. Walk around in this dimension in-game, then press Refresh."
+      : "No world data yet. Start the server and explore, then come back to see the map.";
+    $("#mapStat").textContent = "0 chunks";
+    return;
+  }
+  empty.style.display = "none"; canvas.style.display = "block";
+
+  const prev = mapData;
+  const originBX = bounds.minX * 16, originBZ = bounds.minZ * 16;
+  const blocksW = (bounds.maxX - bounds.minX + 1) * 16, blocksH = (bounds.maxZ - bounds.minZ + 1) * 16;
+  const off = document.createElement("canvas");
+  off.width = blocksW; off.height = blocksH;
+  const octx = off.getContext("2d");
+  const img = octx.createImageData(16, 16);
+  for (let i = 0; i < count; i++) {
+    const base = i * 768;
+    for (let k = 0; k < 256; k++) {
+      const s = base + k * 3, d = k * 4;
+      img.data[d] = pixels[s]; img.data[d + 1] = pixels[s + 1]; img.data[d + 2] = pixels[s + 2]; img.data[d + 3] = 255;
+    }
+    octx.putImageData(img, coords[i * 2] * 16 - originBX, coords[i * 2 + 1] * 16 - originBZ);
+  }
+
+  mapData = { off, blocksW, blocksH, originBX, originBZ, count };
+  if (keepView && prev) {
+    // keep the same world position and zoom after a refresh, even if the world grew
+    mapPanX -= (originBX - prev.originBX) * mapZoom;
+    mapPanY -= (originBZ - prev.originBZ) * mapZoom;
+  } else {
+    const availW = (canvas.parentElement.clientWidth || 700) - 2;
+    mapZoom = clamp(availW / blocksW, 0.25, 6);
+    mapPanX = 0; mapPanY = 0;
+  }
+  drawMapView();
+  $("#mapStat").textContent = `${count.toLocaleString()} chunks${mapY == null ? "" : " · Y " + mapY}`;
+}
+
+function drawMapView() {
+  if (!mapData) return;
+  const canvas = $("#mapCanvas"), wrap = canvas.parentElement;
+  const cssW = wrap.clientWidth, cssH = wrap.clientHeight;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = cssW + "px"; canvas.style.height = cssH + "px";
+  canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
+
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  const css = getComputedStyle(document.documentElement);
+  ctx.fillStyle = (css.getPropertyValue("--field").trim() || "#111");
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  const scaledW = mapData.blocksW * mapZoom, scaledH = mapData.blocksH * mapZoom;
+  mapPanX = scaledW <= cssW ? (cssW - scaledW) / 2 : clamp(mapPanX, cssW - scaledW, 0);
+  mapPanY = scaledH <= cssH ? (cssH - scaledH) / 2 : clamp(mapPanY, cssH - scaledH, 0);
+  ctx.drawImage(mapData.off, 0, 0, mapData.blocksW, mapData.blocksH, mapPanX, mapPanY, scaledW, scaledH);
+}
+
+function zoomBy(f) { const c = $("#mapCanvas"); zoomAt(c.clientWidth / 2, c.clientHeight / 2, f); }
+function zoomAt(cx, cy, f) {
+  if (!mapData) return;
+  const old = mapZoom;
+  mapZoom = clamp(mapZoom * f, 0.25, 40);
+  const k = mapZoom / old;
+  mapPanX = cx - (cx - mapPanX) * k;   // keep the point under the cursor fixed
+  mapPanY = cy - (cy - mapPanY) * k;
+  drawMapView();
 }
 
 /* ================= COMMAND AUTOCOMPLETE ================= */
@@ -250,7 +482,7 @@ const SETTINGS = [
     { key: "gamemode", label: "Game mode", help: "How new players start out.", type: "select", options: ["survival","creative","adventure","spectator"], def: "survival" },
     { key: "difficulty", label: "Difficulty", help: "How dangerous the world is.", type: "select", options: ["peaceful","easy","normal","hard"], def: "easy" },
     { key: "hardcore", label: "Hardcore mode", help: "One life only — death is permanent.", type: "toggle", def: "false" },
-    { key: "pvp", label: "Player vs player (PVP)", help: "Let players fight each other.", type: "toggle", def: "true" },
+    { key: "pvp", label: "Player fighting", help: "Let players hurt each other.", type: "toggle", def: "true" },
     { key: "force-gamemode", label: "Force game mode", help: "Reset players to the default mode on join.", type: "toggle", def: "false" },
     { key: "allow-flight", label: "Allow flight", help: "Stop kicking players who fly (needed for elytra/plugins).", type: "toggle", def: "false" },
     { key: "player-idle-timeout", label: "Idle kick (minutes)", help: "Kick idle players. 0 = never.", type: "number", def: "0" },
@@ -266,25 +498,25 @@ const SETTINGS = [
     { key: "simulation-distance", label: "Simulation distance", help: "How far the world keeps ticking.", type: "slider", min: 3, max: 32, def: "10", unit: "chunks" },
     { key: "max-world-size", label: "World border size", help: "Maximum world width in blocks.", type: "number", def: "29999984" },
   ]},
-  { group: "Mobs & spawning", fields: [
+  { group: "Mobs", fields: [
     { key: "spawn-monsters", label: "Spawn monsters", help: "Zombies, creepers, skeletons, etc.", type: "toggle", def: "true" },
     { key: "spawn-animals", label: "Spawn animals", help: "Cows, pigs, sheep, and other passive mobs.", type: "toggle", def: "true" },
     { key: "spawn-npcs", label: "Spawn villagers", help: "Villagers and other NPCs.", type: "toggle", def: "true" },
   ]},
-  { group: "Players & access", fields: [
+  { group: "Players", fields: [
     { key: "max-players", label: "Max players", help: "How many people can be on at once.", type: "slider", min: 1, max: 100, def: "20", unit: "players" },
     { key: "white-list", label: "Whitelist only", help: "Only invited players can join.", type: "toggle", def: "false" },
     { key: "enforce-whitelist", label: "Enforce whitelist", help: "Kick players the moment they're removed.", type: "toggle", def: "false" },
     { key: "online-mode", label: "Online mode", help: "Require real Minecraft accounts.", type: "toggle", def: "true" },
-    { key: "op-permission-level", label: "Op permission level", help: "How much power /op gives (4 = full).", type: "select", options: ["1","2","3","4"], def: "4" },
+    { key: "op-permission-level", label: "Operator power", help: "How much power operators get (4 = full control).", type: "select", options: ["1","2","3","4"], def: "4" },
   ]},
-  { group: "Server info & appearance", fields: [
-    { key: "motd", label: "Server message (MOTD)", help: "Shown next to your server in the list.", type: "text", def: "A BlockHost server" },
+  { group: "Appearance", fields: [
+    { key: "motd", label: "Server message (MOTD)", help: "Shown next to your server in the list.", type: "text", def: "A Host server" },
     { key: "hide-online-players", label: "Hide online players", help: "Don't reveal who's online in the list.", type: "toggle", def: "false" },
     { key: "resource-pack", label: "Resource pack URL", help: "Optional texture pack players download on join.", type: "text", def: "" },
     { key: "require-resource-pack", label: "Require resource pack", help: "Players must accept it or can't join.", type: "toggle", def: "false" },
   ]},
-  { group: "Advanced & performance", fields: [
+  { group: "Advanced", fields: [
     { key: "enable-command-block", label: "Enable command blocks", help: "Allow command blocks to run.", type: "toggle", def: "false" },
     { key: "max-tick-time", label: "Max tick time (ms)", help: "Watchdog stops the server if a tick hangs. -1 = off.", type: "number", def: "60000" },
     { key: "network-compression-threshold", label: "Compression threshold", help: "Packets bigger than this (bytes) get compressed.", type: "number", def: "256" },
@@ -372,6 +604,89 @@ function wireFiles() {
   $("#revertBtn").onclick = () => { if (curFile) openFile(); };
 }
 
+/* ================= ADD-ONS (Modrinth plugins & mods) ================= */
+let aoDebounce = null;
+function addonKind(s) { return s.type === "Fabric" ? "mods" : s.type === "Paper" ? "plugins" : null; }
+function fmtNum(n) { return n >= 10000 ? Math.round(n / 1000) + "k" : n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n); }
+async function loadAddons() {
+  const s = activeServer(); if (!s) return;
+  const kind = addonKind(s);
+  const unsupported = $("#addonsUnsupported"), body = $("#addonsBody");
+  if (!kind) {
+    unsupported.style.display = "block"; body.style.display = "none";
+    unsupported.innerHTML = s.type === "Vanilla"
+      ? "Vanilla servers can't use plugins or mods. Make a <b>Paper</b> server for plugins, or a <b>Fabric</b> server for mods."
+      : "Plugins and mods aren't available for imported servers.";
+    return;
+  }
+  unsupported.style.display = "none"; body.style.display = "block";
+  $("#aoKind").textContent = kind === "mods" ? "Fabric mods" : "Paper plugins";
+  $("#aoSearch").placeholder = `Search ${kind}…`;
+  await renderInstalled();
+  await runAddonSearch("");
+}
+async function runAddonSearch(query) {
+  const s = activeServer(); if (!s) return;
+  const el = $("#aoResults");
+  el.innerHTML = `<div class="empty">Searching…</div>`;
+  try {
+    const data = await api.searchContent(s.id, query);
+    if (!data.hits || !data.hits.length) { el.innerHTML = `<div class="empty">No results.</div>`; return; }
+    el.innerHTML = data.hits.map((h) => `
+      <div class="ao-card" data-id="${esc(h.project_id)}">
+        <img class="ao-icon" src="${esc(h.icon_url || "")}" onerror="this.style.visibility='hidden'" />
+        <div class="ao-info">
+          <div class="ao-title">${esc(h.title)}</div>
+          <div class="ao-desc">${esc(h.description || "")}</div>
+          <div class="ao-meta">${fmtNum(h.downloads)} downloads</div>
+        </div>
+        <button class="btn sm solid ao-install" type="button">Install</button>
+      </div>`).join("");
+    el.querySelectorAll(".ao-card").forEach((card) => {
+      card.querySelector(".ao-install").onclick = () => installAddon(card.dataset.id, card.querySelector(".ao-install"));
+    });
+  } catch (e) {
+    el.innerHTML = `<div class="empty">Couldn't search Modrinth — check your internet.</div>`;
+  }
+}
+async function installAddon(projectId, btn) {
+  const s = activeServer(); if (!s) return;
+  btn.disabled = true; btn.textContent = "Installing…";
+  try {
+    const r = await api.installContent(s.id, projectId);
+    toast(r.matched ? `Installed ${r.filename}` : `Installed ${r.filename} — no build tagged for your version, used the newest one`);
+    await renderInstalled();
+  } catch (e) {
+    toast("Couldn't install: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "Install";
+  }
+}
+async function renderInstalled() {
+  const s = activeServer(); if (!s) return;
+  const el = $("#aoInstalled");
+  const kind = addonKind(s);
+  const list = await api.listContent(s.id);
+  if (!list.length) { el.innerHTML = `<div class="empty">No ${kind || "add-ons"} installed yet.</div>`; return; }
+  el.innerHTML = list.map((f) => `
+    <div class="ao-inst-row ${f.disabled ? "off" : ""}">
+      <span class="ao-inst-name">${esc(f.name)}</span>
+      <div class="rowbtns">
+        <button class="btn sm ghost" data-toggle="${esc(f.name)}" type="button">${f.disabled ? "Enable" : "Disable"}</button>
+        <button class="btn sm ghost" data-remove="${esc(f.name)}" type="button">Remove</button>
+      </div>
+    </div>`).join("");
+  el.querySelectorAll("[data-toggle]").forEach((btn) => btn.onclick = async () => { await api.toggleContent(s.id, btn.dataset.toggle); renderInstalled(); });
+  el.querySelectorAll("[data-remove]").forEach((btn) => btn.onclick = async () => { if (!confirm(`Remove ${btn.dataset.remove}?`)) return; await api.removeContent(s.id, btn.dataset.remove); renderInstalled(); });
+}
+function wireAddons() {
+  $("#aoSearch").addEventListener("input", (e) => {
+    clearTimeout(aoDebounce);
+    const q = e.target.value;
+    aoDebounce = setTimeout(() => runAddonSearch(q), 350);
+  });
+}
+
 /* ================= SHARE ================= */
 let net = {};
 async function loadShare() {
@@ -398,7 +713,7 @@ async function refreshTunnelAddrs() {
   try { list = await api.tunnelList(); } catch {}
   const el = $("#tunnelAddrs");
   if (!list.length) {
-    el.innerHTML = `<div class="note"><span class="k">➕</span><div>Tunnel is connected, but no Minecraft tunnel exists yet. On <b>playit.gg</b>, add a <b>Minecraft: Java</b> tunnel pointing to <code>127.0.0.1:25565</code>, then press Refresh. <button class="btn sm" id="openPlayit" type="button" style="margin-top:8px">Open playit.gg</button></div></div>`;
+    el.innerHTML = `<div class="note"><div>Tunnel is connected, but no Minecraft tunnel exists yet. On <b>playit.gg</b>, add a <b>Minecraft: Java</b> tunnel pointing to <code>127.0.0.1:25565</code>, then press Refresh. <button class="btn sm" id="openPlayit" type="button" style="margin-top:8px">Open playit.gg</button></div></div>`;
     const b = $("#openPlayit"); if (b) b.onclick = () => api.openExternal("https://playit.gg/account/tunnels");
     return;
   }
@@ -411,7 +726,7 @@ function wireShare() {
     const s = activeServer(); if (!s) return;
     $("#upnpBtn").disabled = true; $("#upnpBtn").innerHTML = "Working…";
     const r = await api.upnp("open", s.port);
-    toast(r.msg); $("#upnpBtn").disabled = false; $("#upnpBtn").innerHTML = '<span class="icon">⚡</span> Try automatic setup (UPnP)';
+    toast(r.msg); $("#upnpBtn").disabled = false; $("#upnpBtn").innerHTML = 'Try automatic setup (UPnP)';
   };
   $("#checkBtn").onclick = async () => {
     const s = activeServer(); if (!s) return;
@@ -443,8 +758,30 @@ function copyText(t) { try { navigator.clipboard.writeText(t); } catch { const a
 /* ================= BACKUPS ================= */
 function fmtSize(b) { if (b > 1e9) return (b / 1e9).toFixed(1) + " GB"; if (b > 1e6) return (b / 1e6).toFixed(1) + " MB"; if (b > 1e3) return (b / 1e3).toFixed(0) + " KB"; return b + " B"; }
 function fmtWhen(ms) { const d = new Date(ms); return d.toLocaleString(); }
+function abToggle(el, on) { el.classList.toggle("on", on); el.querySelector(".state").textContent = on ? "On" : "Off"; }
+function loadAuto() {
+  const s = activeServer(); if (!s) return;
+  abToggle($("#abToggle"), !!s.autoBackup);
+  $("#abMins").value = String(s.autoBackupMins || 60);
+  $("#abKeep").value = String(s.autoBackupKeep || 5);
+  abToggle($("#abPlayers"), !!s.autoBackupPlayersOnly);
+  $("#abOpts").classList.toggle("dim", !s.autoBackup);
+}
+function saveAuto() {
+  const s = activeServer(); if (!s) return;
+  const opts = {
+    enabled: $("#abToggle").classList.contains("on"),
+    mins: +$("#abMins").value,
+    keep: +$("#abKeep").value,
+    playersOnly: $("#abPlayers").classList.contains("on"),
+  };
+  Object.assign(s, { autoBackup: opts.enabled, autoBackupMins: opts.mins, autoBackupKeep: opts.keep, autoBackupPlayersOnly: opts.playersOnly });
+  $("#abOpts").classList.toggle("dim", !opts.enabled);
+  api.setAutoBackup(s.id, opts);
+}
 async function loadBackups() {
   if (!activeId) return;
+  loadAuto();
   const list = await api.listBackups(activeId);
   const el = $("#bkList");
   if (!list.length) { el.innerHTML = `<div class="empty">No backups yet. Click “Back up now” to save a copy of your world.</div>`; return; }
@@ -454,16 +791,39 @@ async function loadBackups() {
 }
 function wireBackups() {
   $("#backupBtn").onclick = async () => { try { const name = await api.createBackup(activeId, ""); toast("Backup created"); loadBackups(); } catch (e) { toast(e.message); } };
+  // auto-backup controls save immediately
+  $("#abToggle").onclick = () => { abToggle($("#abToggle"), !$("#abToggle").classList.contains("on")); saveAuto(); toast($("#abToggle").classList.contains("on") ? "Automatic backups on" : "Automatic backups off"); };
+  $("#abPlayers").onclick = () => { abToggle($("#abPlayers"), !$("#abPlayers").classList.contains("on")); saveAuto(); };
+  $("#abMins").onchange = saveAuto;
+  $("#abKeep").onchange = saveAuto;
 }
 
 /* ================= NEW SERVER MODAL ================= */
 let modalType = "Paper", eulaOk = false, modalMode = "new", pickedDir = null;
+function usedPorts() { return new Set(servers.map((s) => s.port)); }
+function nextFreePort() {
+  const used = usedPorts();
+  let p = 25565;
+  while (used.has(p)) p++;
+  return p;
+}
+function checkPort() {
+  const port = +$("#mPort").value;
+  const taken = usedPorts().has(port);
+  $("#portWarn").style.display = taken ? "block" : "none";
+  $("#portWarn").textContent = taken ? "Already used by another server on this PC — pick a different port." : "";
+  $("#portWarn").className = "hint warn";
+  $("#createBtn").disabled = modalMode === "new" && taken;
+  return !taken;
+}
 async function openModal() {
   $("#scrim").classList.add("open");
   $("#dlWrap").style.display = "none";
   eulaOk = false; $("#eulaChk").classList.remove("on"); $("#eulaChk").textContent = "";
   setModalMode("new");
-  pickedDir = null; $("#pickedPath").innerHTML = "No folder chosen — pick the folder that holds your server's <code>.jar</code>.";
+  $("#mPort").value = nextFreePort();
+  checkPort();
+  pickedDir = null; $("#pickedPath").innerHTML = "No folder picked yet. Choose the folder with your server's <code>.jar</code> file.";
   loadVersions();
 }
 function setModalMode(mode) {
@@ -472,16 +832,18 @@ function setModalMode(mode) {
   $("#newFields").style.display = mode === "new" ? "block" : "none";
   $("#importFields").style.display = mode === "import" ? "block" : "none";
   $("#createBtn").textContent = mode === "import" ? "Import server →" : "Create server →";
+  checkPort();
 }
 async function loadVersions() {
   const sel = $("#mVersion"); sel.innerHTML = "<option>loading…</option>";
   try {
-    const vers = modalType === "Vanilla" ? await api.vanillaVersions() : await api.paperVersions();
+    const vers = modalType === "Vanilla" ? await api.vanillaVersions() : modalType === "Fabric" ? await api.fabricVersions() : await api.paperVersions();
     sel.innerHTML = vers.slice(0, 40).map((v) => `<option>${esc(v)}</option>`).join("");
   } catch (e) { sel.innerHTML = "<option>couldn't load versions</option>"; toast("Couldn't fetch versions — check your internet."); }
 }
 function wireModal() {
   $("#mRam").addEventListener("input", (e) => $("#mRamVal").textContent = e.target.value);
+  $("#mPort").addEventListener("input", checkPort);
   document.querySelectorAll("#mType button").forEach((b) => b.onclick = () => { document.querySelectorAll("#mType button").forEach((x) => x.classList.remove("on")); b.classList.add("on"); modalType = b.dataset.type; loadVersions(); });
   $(".eula").onclick = () => { eulaOk = !eulaOk; $("#eulaChk").classList.toggle("on", eulaOk); $("#eulaChk").textContent = eulaOk ? "✓" : ""; };
   api.onDownload(({ received, total }) => {
@@ -509,6 +871,7 @@ function wireModal() {
       return;
     }
     if (!eulaOk) { toast("Please accept the EULA first"); return; }
+    if (!checkPort()) { toast("That port is already used by another server"); return; }
     const cfg = { name: $("#mName").value.trim() || "My Server", type: modalType, ver: $("#mVersion").value, ram: +$("#mRam").value, port: +$("#mPort").value || 25565 };
     $("#createBtn").disabled = true; $("#dlWrap").style.display = "block"; $("#dlLabel").textContent = "Preparing…"; $("#dlBar").style.width = "0%";
     try {

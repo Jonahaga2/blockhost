@@ -1,10 +1,12 @@
-// Downloads Minecraft server jars — Paper (via the PaperMC API) or Vanilla (via Mojang).
+// Downloads Minecraft server jars — Paper (via the PaperMC API), Vanilla (via Mojang),
+// or Fabric (via the Fabric meta API, which can hand back a ready-to-run server jar).
 const fs = require("fs");
 
 // PaperMC's new "Fill" v3 API (the old api.papermc.io/v2 was retired — returns 410).
 const PAPER = "https://fill.papermc.io/v3/projects/paper";
 const MOJANG = "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json";
-const UA = "BlockHost/0.1 (Minecraft server manager)";
+const FABRIC = "https://meta.fabricmc.net/v2";
+const UA = "Host/0.1 (Minecraft server manager)";
 
 async function json(url) {
   const r = await fetch(url, { headers: { "User-Agent": UA } });
@@ -28,6 +30,25 @@ async function vanillaVersions() {
     .map((v) => v.id); // already newest-first
 }
 
+// Fabric's "intermediary" mappings (needed to build a working server jar) haven't
+// caught up to Minecraft's new "26.x" version numbering yet — they come back as a
+// "0.0.0" placeholder for those. Only offer versions we can actually build. This is
+// checked live (not hard-coded) so newer versions appear automatically once Fabric
+// catches up.
+async function fabricVersions() {
+  const data = await json(`${FABRIC}/versions/game`);
+  const stable = data.filter((v) => v.stable);
+  const newScheme = stable.find((v) => !/^1\./.test(v.version));
+  let allowNewScheme = false;
+  if (newScheme) {
+    try {
+      const loaders = await json(`${FABRIC}/versions/loader/${encodeURIComponent(newScheme.version)}`);
+      allowNewScheme = !!(loaders[0] && loaders[0].intermediary.version !== "0.0.0");
+    } catch {}
+  }
+  return stable.filter((v) => /^1\./.test(v.version) || allowNewScheme).map((v) => v.version);
+}
+
 // ---- resolve a download url ----
 async function paperUrl(version) {
   const builds = await json(`${PAPER}/versions/${version}/builds`);
@@ -45,6 +66,16 @@ async function vanillaUrl(version) {
   if (!meta.downloads || !meta.downloads.server)
     throw new Error(`No server jar for ${version}`);
   return meta.downloads.server.url;
+}
+
+async function fabricUrl(version) {
+  const loaders = await json(`${FABRIC}/versions/loader/${encodeURIComponent(version)}`);
+  const top = loaders[0];
+  if (!top || top.intermediary.version === "0.0.0")
+    throw new Error(`Fabric doesn't support Minecraft ${version} yet — try an older version.`);
+  const installers = await json(`${FABRIC}/versions/installer`);
+  const installerVer = installers[0].version;
+  return `${FABRIC}/versions/loader/${encodeURIComponent(version)}/${encodeURIComponent(top.loader.version)}/${encodeURIComponent(installerVer)}/server/jar`;
 }
 
 // ---- download with progress (reader-based, binary-safe, honours backpressure) ----
@@ -76,8 +107,10 @@ async function download(url, destFile, onProgress) {
 }
 
 async function downloadServer(type, version, destFile, onProgress) {
-  const url = type === "Vanilla" ? await vanillaUrl(version) : await paperUrl(version);
+  const url = type === "Vanilla" ? await vanillaUrl(version)
+    : type === "Fabric" ? await fabricUrl(version)
+    : await paperUrl(version);
   await download(url, destFile, onProgress);
 }
 
-module.exports = { paperVersions, vanillaVersions, downloadServer };
+module.exports = { paperVersions, vanillaVersions, fabricVersions, downloadServer, download };

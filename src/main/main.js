@@ -15,7 +15,7 @@ function createWindow() {
     minHeight: 560,
     backgroundColor: "#08080a",
     autoHideMenuBar: true,
-    title: "BlockHost",
+    title: "Host",
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "preload.js"),
       contextIsolation: true,
@@ -29,13 +29,23 @@ function createWindow() {
 
 app.whenReady().then(createWindow);
 
-app.on("window-all-closed", () => {
-  servers.stopAll();
+let quitting = false;
+// Give running servers a few seconds to save and shut down cleanly, then force-kill
+// anything still alive so we never leave an orphaned server locking its world.
+function shutdownThenQuit(e) {
   tunnel.stop();
+  if (quitting || !servers.hasRunning()) return;
+  e.preventDefault();
+  quitting = true;
+  servers.stopAll();
+  setTimeout(() => { servers.killAll(); app.exit(0); }, 4000);
+}
+
+app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => { servers.stopAll(); tunnel.stop(); });
+app.on("before-quit", shutdownThenQuit);
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("api", {
   // versions
   paperVersions: () => invoke("jars:paperVersions"),
   vanillaVersions: () => invoke("jars:vanillaVersions"),
+  fabricVersions: () => invoke("jars:fabricVersions"),
 
   // servers
   listServers: () => invoke("servers:list"),
@@ -24,6 +25,7 @@ contextBridge.exposeInMainWorld("api", {
   serverState: (id) => invoke("servers:state", id),
   deleteServer: (id) => invoke("servers:delete", id),
   renameServer: (id, name) => invoke("servers:rename", id, name),
+  setAutoRestart: (id, enabled) => invoke("servers:setAutoRestart", id, enabled),
 
   // settings + files
   readProps: (id) => invoke("props:read", id),
@@ -37,6 +39,17 @@ contextBridge.exposeInMainWorld("api", {
   createBackup: (id, label) => invoke("backups:create", id, label),
   restoreBackup: (id, name) => invoke("backups:restore", id, name),
   deleteBackup: (id, name) => invoke("backups:delete", id, name),
+  setAutoBackup: (id, opts) => invoke("backups:setAuto", id, opts),
+
+  // world map
+  worldMap: (id, dim, y, useCache) => invoke("world:render", id, dim, y, useCache),
+
+  // plugins & mods (Modrinth)
+  searchContent: (id, query) => invoke("content:search", id, query),
+  installContent: (id, projectId) => invoke("content:install", id, projectId),
+  listContent: (id) => invoke("content:list", id),
+  removeContent: (id, name) => invoke("content:remove", id, name),
+  toggleContent: (id, name) => invoke("content:toggle", id, name),
 
   // network
   netInfo: () => invoke("net:info"),
@@ -55,6 +68,10 @@ contextBridge.exposeInMainWorld("api", {
   onLog: (cb) => sub("server:log", cb),
   onStatus: (cb) => sub("server:status", cb),
   onPlayers: (cb) => sub("server:players", cb),
+  onStats: (cb) => sub("server:stats", cb),
+  onBackupMade: (cb) => sub("backup:made", cb),
+  onCrashed: (cb) => sub("server:crashed", cb),
+  onContentProgress: (cb) => sub("content:progress", cb),
   onDownload: (cb) => sub("download:progress", cb),
   onTunnelClaimUrl: (cb) => sub("tunnel:claim-url", cb),
   onTunnelClaimState: (cb) => sub("tunnel:claim-state", cb),
