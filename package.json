@@ -1,6 +1,6 @@
 {
   "name": "blockhost",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Host and manage Minecraft servers from a simple desktop app.",
   "main": "src/main/main.js",
   "author": "Jonah",
