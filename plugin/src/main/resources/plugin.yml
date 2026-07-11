@@ -1,0 +1,10 @@
+name: HostPanel
+version: '${version}'
+main: com.blockhost.hostpanel.HostPanelPlugin
+api-version: '1.21'
+author: BlockHost
+description: In-game admin panel for BlockHost server owners.
+commands:
+  host:
+    description: Open the Host admin panel.
+    usage: /host

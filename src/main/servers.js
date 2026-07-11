@@ -22,6 +22,39 @@ function writeEula(dir) {
   fs.writeFileSync(path.join(dir, "eula.txt"), "eula=true\n");
 }
 
+// Drop a handshake file the in-game Host panel plugin reads on startup: it tells the
+// plugin which server it is, how to reach the desktop app's local API, the secret
+// token to authenticate with, and who the owner is (for the owner-only panel).
+function writeHandshake(dir, id, cfg) {
+  try {
+    const { port, token } = require("./bridge").info();
+    const data = { serverId: id, name: cfg.name || "", owner: cfg.owner || "", apiPort: port || null, token };
+    fs.writeFileSync(path.join(dir, "blockhost.json"), JSON.stringify(data, null, 2));
+  } catch {}
+}
+
+// Where the bundled HostPanel plugin jar lives, in dev and in the packaged app.
+function pluginJarPath() {
+  const candidates = [
+    path.join(process.resourcesPath || "", "HostPanel.jar"),           // packaged (extraResources)
+    path.join(__dirname, "..", "..", "resources", "HostPanel.jar"),    // running from source
+  ];
+  return candidates.find((p) => { try { return fs.existsSync(p); } catch { return false; } });
+}
+
+// Only Paper servers load Bukkit plugins. Drop the in-game Host panel into place so
+// the owner never has to install it by hand. The bundled jar is the source of truth.
+function installPlugin(dir, cfg) {
+  if (cfg.type !== "Paper") return;
+  const src = pluginJarPath();
+  if (!src) return;
+  try {
+    const pluginsDir = path.join(dir, "plugins");
+    fs.mkdirSync(pluginsDir, { recursive: true });
+    fs.copyFileSync(src, path.join(pluginsDir, "HostPanel.jar"));
+  } catch {}
+}
+
 function ensureProperties(dir, cfg) {
   const file = path.join(dir, "server.properties");
   if (fs.existsSync(file)) return;
@@ -53,6 +86,8 @@ function start(id, javaPath) {
 
   writeEula(dir);
   ensureProperties(dir, cfg);
+  writeHandshake(dir, id, cfg);
+  installPlugin(dir, cfg);
 
   const ram = Math.max(1, cfg.ram || 2);
   const args = [`-Xmx${ram}G`, `-Xms${ram}G`, "-jar", jarName, "nogui"];
@@ -69,7 +104,14 @@ function start(id, javaPath) {
       if (!raw) return;
       const line = raw.replace(/\x1b\[[0-9;]*m/g, ""); // strip ANSI colour codes from piped console
       bus.emit("log", { id, line });
-      if (/Done \(/.test(line)) setStatus(id, "running");
+      if (/Done \(/.test(line)) {
+        setStatus(id, "running");
+        // Make the owner an operator automatically, once, when the server is ready.
+        if (cfg.owner && !rec.owned) {
+          rec.owned = true;
+          try { proc.stdin.write(`op ${cfg.owner}\n`); } catch {}
+        }
+      }
 
       let changed = false;
       const join = line.match(/(\w{1,16}) joined the game/);

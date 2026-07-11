@@ -189,6 +189,7 @@ function loadTab(tab) {
 function loadReliability() {
   const s = activeServer(); if (!s) return;
   abToggle($("#crToggle"), s.autoRestart !== false); // on by default
+  $("#ownerInput").value = s.owner || "";
 }
 function wireReliability() {
   $("#crToggle").onclick = () => {
@@ -199,6 +200,17 @@ function wireReliability() {
     api.setAutoRestart(s.id, on);
     toast(on ? "Auto-restart on" : "Auto-restart off");
   };
+  // save the owner when the field loses focus or the user presses Enter
+  const saveOwner = () => {
+    const s = activeServer(); if (!s) return;
+    const name = $("#ownerInput").value.trim();
+    if ((s.owner || "") === name) return;
+    s.owner = name;
+    api.setOwner(s.id, name);
+    toast(name ? `Owner set to ${name}` : "Owner cleared");
+  };
+  $("#ownerInput").addEventListener("blur", saveOwner);
+  $("#ownerInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#ownerInput").blur(); });
 }
 
 /* ================= PLAYERS ================= */

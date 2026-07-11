@@ -4,6 +4,7 @@ const path = require("path");
 const ipc = require("./ipc");
 const servers = require("./servers");
 const tunnel = require("./tunnel");
+const bridge = require("./bridge");
 
 let win;
 
@@ -27,13 +28,17 @@ function createWindow() {
   ipc.register(win);
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  bridge.start();   // local API the in-game Host panel plugin talks to
+  createWindow();
+});
 
 let quitting = false;
 // Give running servers a few seconds to save and shut down cleanly, then force-kill
 // anything still alive so we never leave an orphaned server locking its world.
 function shutdownThenQuit(e) {
   tunnel.stop();
+  bridge.stop();
   if (quitting || !servers.hasRunning()) return;
   e.preventDefault();
   quitting = true;

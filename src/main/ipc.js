@@ -168,6 +168,7 @@ function register(win) {
   h("servers:delete", (id) => { servers.stop(id); store.remove(id); return true; });
   h("servers:rename", (id, name) => store.update(id, { name }));
   h("servers:setAutoRestart", (id, enabled) => store.update(id, { autoRestart: !!enabled }));
+  h("servers:setOwner", (id, owner) => store.update(id, { owner: (owner || "").trim() }));
 
   // settings (server.properties) + raw files
   h("props:read", (id) => files.readProps(id));

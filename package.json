@@ -23,7 +23,8 @@
     "directories": { "output": "dist" },
     "files": ["**/*", "!resources/**", "!dist/**"],
     "extraResources": [
-      { "from": "resources/jre", "to": "jre" }
+      { "from": "resources/jre", "to": "jre" },
+      { "from": "resources/HostPanel.jar", "to": "HostPanel.jar" }
     ],
     "win": {
       "target": ["nsis"],

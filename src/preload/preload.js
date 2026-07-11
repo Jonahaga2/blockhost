@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld("api", {
   deleteServer: (id) => invoke("servers:delete", id),
   renameServer: (id, name) => invoke("servers:rename", id, name),
   setAutoRestart: (id, enabled) => invoke("servers:setAutoRestart", id, enabled),
+  setOwner: (id, owner) => invoke("servers:setOwner", id, owner),
 
   // settings + files
   readProps: (id) => invoke("props:read", id),
