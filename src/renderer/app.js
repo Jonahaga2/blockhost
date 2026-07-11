@@ -84,8 +84,14 @@ function renderHeader() {
 function subscribeEvents() {
   api.onLog(({ id, line }) => {
     if (!logs.has(id)) logs.set(id, []);
-    const buf = logs.get(id); buf.push(line); if (buf.length > 600) buf.shift();
-    if (id === activeId && currentTab === "console") renderConsole();
+    const buf = logs.get(id); const wasEmpty = buf.length === 0;
+    buf.push(line); if (buf.length > 600) buf.shift();
+    // Append just the new line instead of re-rendering the whole buffer — a fresh
+    // server dumps hundreds of lines at once, and a full rebuild each time is O(n²).
+    if (id === activeId && currentTab === "console") {
+      if (wasEmpty) renderConsole();       // first line: clear the "server is off" placeholder
+      else appendConsoleLine(line);
+    }
   });
   api.onStatus(({ id, status }) => {
     statuses.set(id, status);
@@ -109,6 +115,17 @@ function renderConsole() {
     ? buf.map((l) => `<div class="ln">${esc(l)}</div>`).join("")
     : `<div class="ln" style="color:var(--muted)">Server is off. Press Start to turn it on.</div>`;
   const el = $("#console"); el.innerHTML = html; el.scrollTop = el.scrollHeight;
+}
+
+// Append a single line node — O(1) per line, and textContent escapes for us.
+function appendConsoleLine(line) {
+  const el = $("#console");
+  const div = document.createElement("div");
+  div.className = "ln";
+  div.textContent = line;
+  el.appendChild(div);
+  while (el.childElementCount > 600) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
 }
 
 // ---------- controls ----------
