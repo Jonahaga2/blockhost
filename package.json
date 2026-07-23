@@ -21,7 +21,7 @@
     "appId": "com.blockhost.app",
     "productName": "Host",
     "directories": { "output": "dist" },
-    "files": ["**/*", "!resources/**", "!dist/**"],
+    "files": ["**/*", "!resources/**", "!dist/**", "!plugin/**", "!mod/**"],
     "extraResources": [
       { "from": "resources/jre", "to": "jre" },
       { "from": "resources/HostPanel.jar", "to": "HostPanel.jar" }
