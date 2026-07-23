@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld("api", {
   renameServer: (id, name) => invoke("servers:rename", id, name),
   setAutoRestart: (id, enabled) => invoke("servers:setAutoRestart", id, enabled),
   setOwner: (id, owner) => invoke("servers:setOwner", id, owner),
+  changeVersion: (id, ver) => invoke("servers:changeVersion", id, ver),
+  resetWorld: (id) => invoke("servers:resetWorld", id),
 
   // settings + files
   readProps: (id) => invoke("props:read", id),

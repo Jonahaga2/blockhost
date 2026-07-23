@@ -28,11 +28,13 @@ function readFile(id, name) {
 function writeFile(id, name, content) {
   if (!EDITABLE.includes(name)) throw new Error("Not an editable file");
   fs.writeFileSync(path.join(store.serverDir(id), name), content);
+  // Keep the remembered settings in sync when the raw properties file is hand-edited,
+  // so applyProps() doesn't undo those edits on the next start.
+  if (name === "server.properties") store.update(id, { props: parseProps(content) });
 }
 
 // ---- server.properties as key/value for the Settings screen ----
-function readProps(id) {
-  const text = readFile(id, "server.properties");
+function parseProps(text) {
   const props = {};
   text.split(/\r?\n/).forEach((line) => {
     if (!line || line.startsWith("#")) return;
@@ -43,9 +45,13 @@ function readProps(id) {
   return props;
 }
 
-function writeProps(id, updates) {
-  const dir = store.serverDir(id);
-  const file = path.join(dir, "server.properties");
+function readProps(id) {
+  return parseProps(readFile(id, "server.properties"));
+}
+
+// Merge key/values into a server.properties file: update existing keys in place,
+// append any new ones, leave everything else (and comments) untouched.
+function mergePropsFile(file, updates) {
   let lines = fs.existsSync(file) ? fs.readFileSync(file, "utf8").split(/\r?\n/) : [];
   const seen = new Set();
   lines = lines.map((line) => {
@@ -65,4 +71,22 @@ function writeProps(id, updates) {
   fs.writeFileSync(file, lines.join("\n"));
 }
 
-module.exports = { listFiles, readFile, writeFile, readProps, writeProps, EDITABLE };
+function writeProps(id, updates) {
+  const dir = store.serverDir(id);
+  mergePropsFile(path.join(dir, "server.properties"), updates);
+  // Remember these as the server's own settings so they survive restarts and any
+  // rewrite the server does on shutdown — reapplied on every launch by applyProps().
+  const cur = (store.get(id) || {}).props || {};
+  store.update(id, { props: { ...cur, ...updates } });
+}
+
+// Reapply the owner's saved settings to server.properties. Called before every start
+// so a stop/restart never loses them, and so they're in place before the world is
+// first generated (which is the only time a seed or hardcore flag can take effect).
+function applyProps(id) {
+  const s = store.get(id);
+  if (!s || !s.props || !Object.keys(s.props).length) return;
+  mergePropsFile(path.join(store.serverDir(id), "server.properties"), s.props);
+}
+
+module.exports = { listFiles, readFile, writeFile, readProps, writeProps, applyProps, EDITABLE };

@@ -169,6 +169,32 @@ function register(win) {
   h("servers:rename", (id, name) => store.update(id, { name }));
   h("servers:setAutoRestart", (id, enabled) => store.update(id, { autoRestart: !!enabled }));
   h("servers:setOwner", (id, owner) => store.update(id, { owner: (owner || "").trim() }));
+  h("servers:changeVersion", async (id, ver) => {
+    const s = store.get(id);
+    if (!s) throw new Error("No such server");
+    if (s.type === "Imported") throw new Error("Imported servers keep their own jar — swap it in the folder yourself.");
+    if (servers.state(id).status !== "stopped") throw new Error("Stop the server before changing its version.");
+    if (!ver || ver === s.ver) throw new Error("Pick a different version first.");
+    const dest = path.join(store.serverDir(id), s.jarName || "server.jar");
+    await jars.downloadServer(s.type, ver, dest, (received, total) => {
+      win.webContents.send("download:progress", { id, received, total });
+    });
+    return store.update(id, { ver });
+  });
+  h("servers:resetWorld", (id) => {
+    const s = store.get(id);
+    if (!s) throw new Error("No such server");
+    if (servers.state(id).status !== "stopped") throw new Error("Stop the server before resetting the world.");
+    const dir = store.serverDir(id);
+    // Use the configured world name so custom level-name servers reset the right folder.
+    let level = "world";
+    try { const p = files.readProps(id); if (p["level-name"] && p["level-name"].trim()) level = p["level-name"].trim(); } catch {}
+    try { backup.create(id, "before-reset"); } catch {} // keep a copy if there's a world to save
+    for (const suffix of ["", "_nether", "_the_end"]) {
+      fs.rmSync(path.join(dir, level + suffix), { recursive: true, force: true });
+    }
+    return true;
+  });
 
   // settings (server.properties) + raw files
   h("props:read", (id) => files.readProps(id));

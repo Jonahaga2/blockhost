@@ -178,7 +178,7 @@ function wireStatic() {
 function loadTab(tab) {
   if (tab === "players") { renderPlayers(); syncPlayers(); }
   else if (tab === "map") loadMap();
-  else if (tab === "settings") { loadReliability(); loadSettings(); }
+  else if (tab === "settings") { loadReliability(); loadServerCard(); loadSettings(); }
   else if (tab === "files") loadFiles();
   else if (tab === "addons") loadAddons();
   else if (tab === "share") loadShare();
@@ -211,6 +211,58 @@ function wireReliability() {
   };
   $("#ownerInput").addEventListener("blur", saveOwner);
   $("#ownerInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#ownerInput").blur(); });
+
+  // ---- change / update the server's Minecraft version ----
+  $("#verUpdateBtn").onclick = async () => {
+    const s = activeServer(); if (!s) return;
+    const ver = $("#verSelect").value;
+    if (!ver || ver === s.ver) { toast("That's already the current version"); return; }
+    if (statusOf(s.id) !== "stopped") { toast("Stop the server before changing its version"); return; }
+    if (!confirm(`Change "${s.name}" to ${ver}?\n\nBack up your world first — worlds don't always move cleanly between versions, and downgrading can corrupt one.`)) return;
+    const btn = $("#verUpdateBtn"); btn.disabled = true;
+    $("#verDlWrap").style.display = "block"; $("#verDlLabel").textContent = "Downloading…"; $("#verDlBar").style.width = "0%";
+    try {
+      await api.changeVersion(s.id, ver);
+      s.ver = ver;
+      toast(`Updated to ${ver}`);
+      renderHeader(); renderSidebar();
+    } catch (e) { toast(e.message); }
+    finally { btn.disabled = false; $("#verDlWrap").style.display = "none"; }
+  };
+
+  // ---- reset the world (so a new seed / hardcore world can generate) ----
+  $("#resetWorldBtn").onclick = async () => {
+    const s = activeServer(); if (!s) return;
+    if (statusOf(s.id) !== "stopped") { toast("Stop the server before resetting the world"); return; }
+    if (!confirm("Reset the world?\n\nYour current world is backed up first, then deleted so a fresh one generates (with your current seed and settings) the next time you start.")) return;
+    try { await api.resetWorld(s.id); toast("World reset — start the server to generate the new one"); }
+    catch (e) { toast(e.message); }
+  };
+
+  // version-update download progress (separate from the new-server modal's bar)
+  api.onDownload(({ id, received, total }) => {
+    if (id !== activeId || $("#verDlWrap").style.display !== "block") return;
+    if (total) { const pct = Math.round((received / total) * 100); $("#verDlBar").style.width = pct + "%"; $("#verDlLabel").textContent = `Downloading… ${pct}%`; }
+    else $("#verDlLabel").textContent = `Downloading… ${(received / 1e6).toFixed(1)} MB`;
+  });
+}
+
+async function loadServerCard() {
+  const s = activeServer(); if (!s) return;
+  const sel = $("#verSelect"), btn = $("#verUpdateBtn"), hint = $("#verHint");
+  if (s.type === "Imported") {
+    sel.innerHTML = `<option>${esc(s.ver)}</option>`; sel.disabled = true; btn.disabled = true;
+    hint.style.display = "block"; hint.className = "hint"; hint.textContent = "Imported servers keep their own jar — replace it in the server folder to change versions.";
+    return;
+  }
+  sel.disabled = false; btn.disabled = false; hint.style.display = "none";
+  sel.innerHTML = `<option>loading…</option>`;
+  try {
+    const vers = s.type === "Vanilla" ? await api.vanillaVersions() : s.type === "Fabric" ? await api.fabricVersions() : await api.paperVersions();
+    const opts = vers.slice(0, 40);
+    if (!opts.includes(s.ver)) opts.unshift(s.ver);
+    sel.innerHTML = opts.map((v) => `<option ${v === s.ver ? "selected" : ""}>${esc(v)}</option>`).join("");
+  } catch { sel.innerHTML = `<option>${esc(s.ver)}</option>`; }
 }
 
 /* ================= PLAYERS ================= */

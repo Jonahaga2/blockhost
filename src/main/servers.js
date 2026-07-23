@@ -4,6 +4,7 @@ const { EventEmitter } = require("events");
 const fs = require("fs");
 const path = require("path");
 const store = require("./store");
+const files = require("./files");
 
 const bus = new EventEmitter();
 const running = new Map(); // id -> { proc, status, players:Set }
@@ -86,6 +87,7 @@ function start(id, javaPath) {
 
   writeEula(dir);
   ensureProperties(dir, cfg);
+  files.applyProps(id); // re-assert the owner's saved settings before every launch
   writeHandshake(dir, id, cfg);
   installPlugin(dir, cfg);
 

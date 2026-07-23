@@ -124,6 +124,20 @@
               </div>
               <div class="ab-row"><span class="ab-lab">Minecraft username</span><input class="txt" id="ownerInput" autocomplete="off" spellcheck="false" placeholder="e.g. Steve" style="max-width:240px" /></div>
             </div>
+            <div class="autobk">
+              <div class="autobk-head">
+                <div><div class="lab">Server version</div><div class="hlp">Update this server to another Minecraft version. Back up first — worlds don't always move cleanly between versions, and downgrading can corrupt a world. Stop the server before updating.</div></div>
+              </div>
+              <div class="ab-row"><span class="ab-lab">Version</span><div class="selwrap"><select id="verSelect"><option>loading…</option></select></div><button class="btn sm solid" id="verUpdateBtn" type="button">Update</button></div>
+              <div class="hint" id="verHint" style="display:none; margin-top:8px"></div>
+              <div id="verDlWrap" style="display:none; margin-top:10px"><label class="mini-lab" id="verDlLabel">Downloading…</label><div class="progress"><i id="verDlBar"></i></div></div>
+            </div>
+            <div class="autobk">
+              <div class="autobk-head">
+                <div><div class="lab">World seed</div><div class="hlp">A seed only shapes a brand-new world. To use a new seed, set it in the settings below, then reset the world here — your current world is backed up first. Stop the server before resetting.</div></div>
+                <button class="btn ghost" id="resetWorldBtn" type="button">Reset world…</button>
+              </div>
+            </div>
             <div class="set-toolbar"><input class="set-search txt" id="setSearch" placeholder="Search settings…" /></div>
             <div id="setBody"></div>
             <div class="savebar"><button class="btn solid" id="saveBtn" type="button">Save settings</button><span class="hint" id="saveHint">Some changes need a restart to take effect.</span></div>
